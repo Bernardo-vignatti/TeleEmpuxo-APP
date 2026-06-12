@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Telemetria — Static Fire</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root{
+  --bg:        transparent;
+  --ink:       #e8eef7;
+  --ink-dim:   rgba(232,238,247,.55);
+  --ink-mute:  rgba(232,238,247,.32);
+  --line:      rgba(140,170,210,.14);
+  --line-2:    rgba(140,170,210,.22);
+  --panel:     rgba(8,12,20,.72);
+  --panel-2:   rgba(14,20,32,.82);
+  --cyan:      #22d3ee;
+  --cyan-soft: rgba(34,211,238,.18);
+  --amber:     #f5a623;
+  --green:     #34d399;
+  --red:       #ef4757;
+  --red-soft:  rgba(239,71,87,.20);
+  --blue:      #5aa9ff;
+  --radius:    10px;
+  --radius-sm: 6px;
+  --shadow:    0 10px 40px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.35);
+}
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+body{
+  background:var(--bg);
+  overflow:hidden;
+  font-family:'Inter',system-ui,sans-serif;
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"ss01","cv11";
+}
+
+body::after{
+  content:'';
+  position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.04) 3px 4px);
+  pointer-events:none;z-index:9999;
+  mix-blend-mode:multiply;opacity:.5;
+}
+
+/* ── HUD root ── */
+.hud{
+  position:fixed;
+  bottom:0;left:0;right:0;
+  padding:0 36px 28px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:28px;
+  pointer-events:none;
+  transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1);
+  will-change:opacity,transform;
+}
+body.ui-hidden .hud{opacity:0!important;transform:translateY(24px)!important;pointer-events:none}
+
+/* ── Paineis laterais ── */
+.side-panel{
+  display:flex;flex-direction:column;align-items:stretch;gap:10px;
+  width:230px;
+  animation:slideUp .8s cubic-bezier(.16,1,.3,1) both;
+}
+.side-panel.right{animation-delay:.15s}
+@keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+
+body.anim-ready .side-panel,
+body.anim-ready .center,
+body.anim-ready .info-row,
+body.anim-ready .graph-wrap{
+  transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1);
+}
+.hud-off{opacity:0!important;transform:translateY(32px)!important;pointer-events:none}
+
+/* ── Cards ── */
+.hex-container{
+  position:relative;
+  background:var(--panel);
+  backdrop-filter:blur(14px) saturate(140%);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
+  border:1px solid var(--line-2);
+  border-radius:var(--radius);
+  padding:18px 16px 16px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.hex-container::before,.hex-container::after{
+  content:'';position:absolute;width:10px;height:10px;
+  border:1px solid var(--cyan);opacity:.55;
+}
+.hex-container::before{top:6px;left:6px;border-right:none;border-bottom:none}
+.hex-container::after{bottom:6px;right:6px;border-left:none;border-top:none}
+.hex-svg{display:none}
+
+.hex-content{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.hex-val{
+  font-family:'JetBrains Mono',monospace;
+  font-size:46px;font-weight:700;color:var(--ink);
+  line-height:1;letter-spacing:-1.5px;
+  font-variant-numeric:tabular-nums;
+}
+.hex-unit{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;color:var(--ink-mute);
+  letter-spacing:3px;margin-top:8px;
+}
+.hex-deco{display:flex;align-items:center;gap:8px;margin-top:2px;}
+.hex-deco-line{
+  flex:1;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,var(--cyan) 0%,var(--cyan) 35%,var(--line) 35%,var(--line) 100%);
+  opacity:.7;
+}
+.hex-deco-dot{width:5px;height:5px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+.hex-label{
+  font-family:'Inter',sans-serif;
+  color:var(--cyan);
+  font-size:10px;letter-spacing:3px;font-weight:600;
+  text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;
+  padding-left:14px;
+}
+.hex-label::before{
+  content:'';width:6px;height:6px;background:var(--cyan);
+  border-radius:1px;box-shadow:0 0 8px var(--cyan);
+  position:absolute;margin-left:-14px;margin-top:1px;
+}
+.side-panel .hex-label{position:relative}
+
+/* ── Centro ── */
+.center{
+  display:flex;flex-direction:column;align-items:center;flex:1;
+  max-width:540px;margin:0 auto;
+  animation:fadeIn 1s ease both .05s;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+.arc-wrap{position:relative;width:340px;height:170px;overflow:hidden}
+.arc-wrap svg{position:absolute;top:0;left:0}
+.arc-tick      {stroke:rgba(232,238,247,.15);stroke-width:1}
+.arc-tick-major{stroke:rgba(232,238,247,.5); stroke-width:1.5}
+
+.center-val-wrap{display:flex;align-items:baseline;gap:8px;margin-top:-6px;z-index:2;}
+.center-val{
+  font-family:'JetBrains Mono',monospace;
+  font-size:84px;font-weight:700;color:var(--ink);
+  line-height:.95;letter-spacing:-3.5px;
+  font-variant-numeric:tabular-nums;
+  transition:color .2s,text-shadow .2s;
+}
+.center-val.burning{
+  color:#fff;
+  text-shadow:0 0 24px rgba(239,71,87,.85),0 0 60px rgba(239,71,87,.45);
+  animation:valPulse .35s ease infinite alternate;
+}
+@keyframes valPulse{
+  from{text-shadow:0 0 24px rgba(239,71,87,.7)}
+  to  {text-shadow:0 0 48px rgba(239,71,87,1),0 0 90px rgba(239,71,87,.4)}
+}
+.center-unit{
+  font-family:'JetBrains Mono',monospace;
+  font-size:20px;color:var(--ink-dim);letter-spacing:1px;font-weight:500;
+}
+.center-label{
+  font-family:'Inter',sans-serif;color:var(--ink-mute);
+  font-size:11px;letter-spacing:5px;text-transform:uppercase;
+  margin-top:4px;font-weight:600;
+}
+
+/* ── Info Row ── */
+.info-row{
+  display:flex;gap:0;margin-top:18px;
+  border:1px solid var(--line-2);
+  background:var(--panel-2);
+  backdrop-filter:blur(14px) saturate(140%);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
+  box-shadow:var(--shadow);
+  overflow:hidden;width:100%;
+  border-radius:var(--radius-sm);
+}
+.info-item{
+  flex:1;padding:12px 8px;
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  position:relative;
+}
+.info-item::before{
+  content:'';position:absolute;top:0;left:50%;width:24px;height:1px;
+  background:var(--cyan);transform:translateX(-50%);opacity:.4;
+}
+.info-item:last-child{border-right:none}
+.info-lbl{
+  font-size:9px;letter-spacing:2.5px;color:var(--ink-mute);
+  text-transform:uppercase;font-family:'Inter',sans-serif;font-weight:600;
+}
+.info-val{
+  font-family:'JetBrains Mono',monospace;
+  font-size:14px;color:var(--ink);letter-spacing:.5px;font-weight:500;
+  transition:color .2s;font-variant-numeric:tabular-nums;
+}
+.info-val.green{color:var(--green);text-shadow:0 0 10px rgba(52,211,153,.35)}
+.info-val.amber{color:var(--amber);text-shadow:0 0 10px rgba(245,166,35,.35)}
+.info-val.red  {color:var(--red);  text-shadow:0 0 10px rgba(239,71,87,.35)}
+.info-val.cyan {color:var(--cyan); text-shadow:0 0 10px rgba(34,211,238,.35)}
+.info-val.dim  {color:var(--ink-mute)}
+.info-val.err  {color:var(--red);  text-shadow:0 0 10px rgba(239,71,87,.45)}
+
+/* ── Status Pill ── */
+.status-pill{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:7px 18px;
+  border:1px solid var(--line-2);
+  background:var(--panel);
+  backdrop-filter:blur(8px);
+  margin-top:14px;border-radius:999px;
+  box-shadow:0 4px 20px rgba(0,0,0,.35);
+}
+.pill-dot{width:7px;height:7px;border-radius:50%;background:#555;transition:background .3s,box-shadow .3s}
+.pill-dot.live{background:var(--cyan); box-shadow:0 0 10px var(--cyan); animation:blink 1.2s infinite}
+.pill-dot.ok  {background:var(--green);box-shadow:0 0 10px var(--green)}
+.pill-dot.warn{background:var(--amber);box-shadow:0 0 10px var(--amber);animation:blink .7s infinite}
+.pill-dot.err {background:var(--red);  box-shadow:0 0 10px var(--red);  animation:blink .35s infinite}
+@keyframes blink{50%{opacity:.25}}
+.pill-txt{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;letter-spacing:1.5px;color:var(--ink-dim);text-transform:uppercase;
+}
+
+/* ── Gráfico ── */
+.graph-wrap{
+  width:100%;margin-top:14px;position:relative;
+  background:rgba(6,10,16,.5);
+  border-radius:var(--radius-sm);
+  border:1px solid var(--line);
+  padding:6px 8px 4px;overflow:hidden;
+}
+.graph-wrap::before{
+  content:'TEMPO →';
+  position:absolute;bottom:4px;right:8px;
+  font-family:'JetBrains Mono',monospace;font-size:8px;
+  color:var(--ink-mute);letter-spacing:2px;
+}
+canvas#gc{width:100%;height:56px;display:block}
+.graph-axis{position:absolute;left:0;bottom:0;width:100%;height:1px;background:var(--line-2)}
+
+/* ── Burn Flash ── */
+.burn-flash{position:fixed;inset:0;background:radial-gradient(circle at center,rgba(239,71,87,.25),rgba(239,71,87,.08));pointer-events:none;opacity:0;z-index:100}
+.burn-flash.active{animation:burnFlashAnim .6s ease-out forwards}
+@keyframes burnFlashAnim{0%{opacity:.55}100%{opacity:0}}
+
+/* ════════════════════════════════════════════
+   T-MINUS — canto superior esquerdo, discreto
+════════════════════════════════════════════ */
+.mission-tminus{
+  position:fixed;top:32px;left:36px;
+  display:flex;flex-direction:column;align-items:flex-start;
+  pointer-events:none;opacity:0;z-index:190;
+  transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1);
+  transform:translateX(-15px);
+  padding:14px 18px;
+  background:var(--panel-2);
+  backdrop-filter:blur(14px) saturate(140%);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
+  border:1px solid var(--line-2);
+  border-left:3px solid var(--amber);
+  border-radius:var(--radius-sm);
+  box-shadow:var(--shadow);
+}
+.mission-tminus.show{opacity:1;transform:translateX(0)}
+
+.tminus-label{
+  font-family:'Inter',sans-serif;
+  font-size:9px;letter-spacing:3px;text-transform:uppercase;
+  color:var(--ink-mute);margin-bottom:4px;font-weight:600;
+}
+.tminus-val{
+  font-family:'JetBrains Mono',monospace;
+  font-size:52px;font-weight:700;line-height:1;
+  color:var(--ink);
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 0 25px rgba(245,166,35,.3);
+  transition:color .4s,text-shadow .4s;
+  letter-spacing:-2px;
+}
+.tminus-val.urgent{
+  color:var(--red);
+  text-shadow:0 0 28px rgba(239,71,87,.7);
+  animation:urgentPulse .8s ease-in-out infinite;
+}
+@keyframes urgentPulse{50%{opacity:.7}}
+.tminus-status{
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  color:var(--ink-mute);margin-top:5px;
+  transition:color .3s;
+}
+/* estados especiais dentro do card T-minus */
+.mission-tminus.is-hold{
+  border-left-color:var(--amber);
+}
+.mission-tminus.is-hold .tminus-val{
+  font-size:36px;letter-spacing:4px;
+  color:var(--amber);
+  text-shadow:0 0 20px rgba(245,166,35,.55);
+  animation:urgentPulse 1.2s ease-in-out infinite;
+}
+.mission-tminus.is-hold .tminus-label{
+  color:var(--amber);opacity:.7;
+}
+.mission-tminus.is-scrub{
+  border-left-color:var(--red);
+}
+.mission-tminus.is-scrub .tminus-val{
+  font-size:32px;letter-spacing:4px;
+  color:var(--red);
+  text-shadow:0 0 20px rgba(239,71,87,.55);
+}
+.mission-tminus.is-scrub .tminus-label{
+  color:var(--red);opacity:.7;
+}
+.mission-tminus.is-scrub .tminus-status{
+  color:var(--ink-mute);
+}
+
+/* ── End Overlay ── */
+.end-overlay{
+  position:fixed;inset:0;
+  background:rgba(3,5,10,.55);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;z-index:200;transition:opacity .4s;
+}
+.end-overlay.show{opacity:1}
+.end-card{
+  background:var(--panel-2);
+  border:1px solid var(--line-2);
+  padding:32px 56px;text-align:center;
+  box-shadow:0 0 80px rgba(34,211,238,.15),var(--shadow);
+  animation:cardIn .5s cubic-bezier(.16,1,.3,1) both;
+  border-radius:var(--radius);position:relative;
+}
+.end-card::before,.end-card::after{
+  content:'';position:absolute;width:18px;height:18px;border:1.5px solid var(--cyan);
+}
+.end-card::before{top:8px;left:8px;border-right:none;border-bottom:none}
+.end-card::after {bottom:8px;right:8px;border-left:none;border-top:none}
+@keyframes cardIn{from{transform:scale(.9) translateY(20px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+.end-title{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:6px;color:var(--cyan);text-transform:uppercase;margin-bottom:20px;font-weight:700;}
+.end-metrics{display:flex;gap:44px;justify-content:center}
+.end-metric{display:flex;flex-direction:column;align-items:center;gap:6px}
+.end-metric-val{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-1px;}
+.end-metric-lbl{font-size:9px;letter-spacing:3px;color:var(--ink-mute);text-transform:uppercase;font-weight:600}
+
+.hud > *{will-change:transform,opacity}
+</style>
+</head>
+<body>
+
+<div class="burn-flash" id="burnFlash"></div>
+
+<!-- ── T-minus: canto superior esquerdo, discreto ── -->
+<div class="mission-tminus" id="missionCountdownOverlay">
+  <div class="tminus-label">T-minus</div>
+  <div class="tminus-val" id="missionTimerDisplay">--</div>
+  <div class="tminus-status" id="missionStatusText">aguardando</div>
+</div>
+
+<!-- ── End overlay ── -->
+<div class="end-overlay" id="endOverlay">
+  <div class="end-card">
+    <div class="end-title">◆ Teste Concluído ◆</div>
+    <div class="end-metrics">
+      <div class="end-metric">
+        <div class="end-metric-val" id="e-peak">—</div>
+        <div class="end-metric-lbl">Pico (N)</div>
+      </div>
+      <div class="end-metric">
+        <div class="end-metric-val" id="e-imp">—</div>
+        <div class="end-metric-lbl">Impulso (N·s)</div>
+      </div>
+      <div class="end-metric">
+        <div class="end-metric-val" id="e-dur">—</div>
+        <div class="end-metric-lbl">Duração (s)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="hud" id="mainHud">
+
+  <!-- Esquerdo: Pico -->
+  <div class="side-panel left" id="ovl-left">
+    <div class="hex-container">
+      <svg class="hex-svg" viewBox="0 0 156 140" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="hex-content">
+        <div class="hex-val" id="h-peak">0</div>
+        <div class="hex-unit">NEWTONS</div>
+      </div>
+    </div>
+    <div class="hex-deco">
+      <div class="hex-deco-line"></div><div class="hex-deco-dot"></div>
+    </div>
+    <div class="hex-label">Pico de Empuxo</div>
+  </div>
+
+  <!-- Centro -->
+  <div class="center" id="ovl-center">
+    <div class="arc-wrap">
+      <svg width="340" height="170" viewBox="0 0 320 160">
+        <g id="ticks"></g>
+        <path d="M24,156 A136,136 0 0,1 296,156" fill="none" stroke="rgba(232,238,247,.06)" stroke-width="6"/>
+        <path d="M36,156 A124,124 0 0,1 284,156" fill="none" stroke="rgba(232,238,247,.03)" stroke-width="2"/>
+        <path id="arc" d="M24,156 A136,136 0 0,1 296,156"
+              fill="none" stroke="url(#arcGrad)" stroke-width="6"
+              stroke-dasharray="0 427" stroke-linecap="round"
+              style="transition:stroke-dasharray .08s linear,stroke .2s"/>
+        <circle id="arcDot" cx="24" cy="156" r="5" fill="#fff" filter="url(#glow)"
+                style="transition:all .08s linear;opacity:0"/>
+        <defs>
+          <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stop-color="#22d3ee"/>
+            <stop offset="60%"  stop-color="#f5a623"/>
+            <stop offset="100%" stop-color="#ef4757"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+      </svg>
+    </div>
+
+    <div class="center-val-wrap">
+      <div class="center-val" id="h-force">0.0</div>
+      <div class="center-unit">N</div>
+    </div>
+    <div class="center-label">Força de Empuxo</div>
+
+    <div class="info-row" id="ovl-info">
+      <div class="info-item">
+        <div class="info-lbl">Impulso</div>
+        <div class="info-val" id="h-imp">0.000</div>
+      </div>
+      <div class="info-item">
+        <div class="info-lbl">Taxa</div>
+        <div class="info-val cyan" id="h-hz">--</div>
+      </div>
+      <div class="info-item">
+        <div class="info-lbl">ESP32</div>
+        <div class="info-val dim" id="h-esp">--</div>
+      </div>
+      <div class="info-item">
+        <div class="info-lbl">Estado</div>
+        <div class="info-val dim" id="h-state">IDLE</div>
+      </div>
+    </div>
+
+    <div class="graph-wrap" id="ovl-graph">
+      <canvas id="gc" height="56"></canvas>
+      <div class="graph-axis"></div>
+    </div>
+
+    <div class="status-pill">
+      <div class="pill-dot" id="liveDot"></div>
+      <div class="pill-txt" id="liveStatus">conectando...</div>
+    </div>
+  </div>
+
+  <!-- Direito: Tempo -->
+  <div class="side-panel right" id="ovl-right">
+    <div class="hex-container">
+      <svg class="hex-svg" viewBox="0 0 156 140" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="hex-content">
+        <div class="hex-val" id="h-time" style="font-size:42px;letter-spacing:-1px">00.00</div>
+        <div class="hex-unit">SEGUNDOS</div>
+      </div>
+    </div>
+    <div class="hex-deco">
+      <div class="hex-deco-line"></div><div class="hex-deco-dot"></div>
+    </div>
+    <div class="hex-label">Tempo de Queima</div>
+  </div>
+
+</div>
+
+<script>
+// ════
+//  CONFIG
+// ════
+const params  = new URLSearchParams(location.search);
+const WS_IP   = params.get('ip')   || location.hostname || 'localhost';
+const WS_PORT = params.get('port') || '8766';
+const WS_URL  = `ws://${WS_IP}:${WS_PORT}`;
+const ARC_LEN = 427;
+const MAX_F   = parseFloat(params.get('max') || '120');
+
+// ════
+//  ESTADO LOCAL
+// ════
+const STATE   = { IDLE:'idle', RUNNING:'running', COMPLETE:'complete' };
+const MISSION = { IDLE:'mission_idle', COUNTING:'mission_counting', HOLD:'mission_hold', SCRUBBED:'mission_scrubbed' };
+
+let systemState  = STATE.IDLE;
+let missionState = MISSION.IDLE;
+let burning      = false;
+let frozenTime   = null;
+let graphData    = [];
+let hzCount      = 0, lastHzTs = Date.now();
+let animFrame    = null;
+let dataPaused   = true;
+let holdSeconds  = null;  // valor do timer quando o hold foi ativado
+
+// ── Elementos ────
+const elForce    = document.getElementById('h-force');
+const elPeak     = document.getElementById('h-peak');
+const elTime     = document.getElementById('h-time');
+const elImp      = document.getElementById('h-imp');
+const elHz       = document.getElementById('h-hz');
+const elEsp      = document.getElementById('h-esp');
+const elState    = document.getElementById('h-state');
+const elArc      = document.getElementById('arc');
+const elDot      = document.getElementById('arcDot');
+const liveDot    = document.getElementById('liveDot');
+const liveTxt    = document.getElementById('liveStatus');
+const burnFlash  = document.getElementById('burnFlash');
+const endOverlay = document.getElementById('endOverlay');
+const canvas     = document.getElementById('gc');
+const ctx        = canvas.getContext('2d');
+
+// Mission elements
+const missionOverlay  = document.getElementById('missionCountdownOverlay');
+const missionTimerEl  = document.getElementById('missionTimerDisplay');
+const missionStatusEl = document.getElementById('missionStatusText');
+
+// ── Ticks no arco ────
+(function buildTicks() {
+  const g = document.getElementById('ticks');
+  const cx = 160, cy = 156, R = 136, r1 = 120, r2 = 113;
+  for (let i = 0; i <= 12; i++) {
+    const pct   = i / 12;
+    const angle = Math.PI + pct * Math.PI;
+    const x1 = cx + R  * Math.cos(angle), y1 = cy + R  * Math.sin(angle);
+    const x2 = cx + (i % 4 === 0 ? r2 : r1) * Math.cos(angle);
+    const y2 = cy + (i % 4 === 0 ? r2 : r1) * Math.sin(angle);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', x1.toFixed(1)); line.setAttribute('y1', y1.toFixed(1));
+    line.setAttribute('x2', x2.toFixed(1)); line.setAttribute('y2', y2.toFixed(1));
+    line.setAttribute('class', i % 4 === 0 ? 'arc-tick-major' : 'arc-tick');
+    g.appendChild(line);
+  }
+})();
+
+// ════
+//  CANVAS
+// ════
+function resizeCanvas() {
+  canvas.width  = canvas.offsetWidth  * devicePixelRatio;
+  canvas.height = canvas.offsetHeight * devicePixelRatio;
+  drawGraph();
+}
+window.addEventListener('load',   resizeCanvas);
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 60);
+
+function drawGraph() {
+  const dpr = devicePixelRatio;
+  const w   = canvas.width  / dpr;
+  const h   = canvas.height / dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (graphData.length < 2) return;
+
+  const absMax = Math.max(...graphData.map(Math.abs), MAX_F * 0.15);
+  const zero   = h * 0.80;
+
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(140,170,210,.08)'; ctx.lineWidth = 0.5;
+  ctx.setLineDash([2, 4]);
+  ctx.moveTo(0, zero); ctx.lineTo(w, zero);
+  ctx.moveTo(0, h * 0.4); ctx.lineTo(w, h * 0.4);
+  ctx.stroke(); ctx.setLineDash([]);
+
+  ctx.beginPath();
+  graphData.forEach((v, i) => {
+    const x = (i / (graphData.length - 1)) * w;
+    const y = zero - (v / absMax) * (zero - 4);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  const lastY = zero - (graphData[graphData.length-1] / absMax) * (zero - 4);
+  ctx.lineTo(w, zero); ctx.lineTo(0, zero); ctx.closePath();
+
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  if (burning) {
+    grad.addColorStop(0, 'rgba(239,71,87,.55)');
+    grad.addColorStop(1, 'rgba(239,71,87,0)');
+  } else {
+    grad.addColorStop(0, 'rgba(34,211,238,.35)');
+    grad.addColorStop(1, 'rgba(34,211,238,0)');
+  }
+  ctx.fillStyle = grad; ctx.fill();
+
+  ctx.beginPath();
+  graphData.forEach((v, i) => {
+    const x = (i / (graphData.length - 1)) * w;
+    const y = zero - (v / absMax) * (zero - 4);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = burning ? '#ef4757' : '#22d3ee';
+  ctx.lineWidth   = burning ? 2.4 : 1.8;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(w - 1, lastY, burning ? 4 : 3, 0, Math.PI * 2);
+  ctx.fillStyle   = burning ? '#ef4757' : '#22d3ee';
+  ctx.shadowColor = burning ? '#ef4757' : '#22d3ee';
+  ctx.shadowBlur  = burning ? 12 : 6;
+  ctx.fill(); ctx.shadowBlur = 0;
+}
+
+// ════
+//  ARCO SVG
+// ════
+function updateArc(force) {
+  const pct = Math.min(Math.max(Math.abs(force) / MAX_F, 0), 1);
+  const len = pct * ARC_LEN;
+  elArc.setAttribute('stroke-dasharray', `${len.toFixed(1)} ${ARC_LEN}`);
+  const cx = 160, cy = 156, R = 136;
+  const angle = Math.PI + pct * Math.PI;
+  elDot.setAttribute('cx', (cx + R * Math.cos(angle)).toFixed(1));
+  elDot.setAttribute('cy', (cy + R * Math.sin(angle)).toFixed(1));
+  elDot.style.opacity = pct > 0.01 ? '1' : '0';
+  elArc.style.stroke  = force < -1 ? '#5aa9ff' : 'url(#arcGrad)';
+}
+
+// ════
+//  ESTADO
+// ════
+function updateStateDisplay() {
+  if (burning && systemState === STATE.RUNNING) {
+    elState.textContent = 'QUEIMA';
+    elState.className   = 'info-val red';
+  } else if (missionState === MISSION.HOLD) {
+    elState.textContent = 'HOLD';
+    elState.className   = 'info-val amber';
+  } else if (systemState === STATE.RUNNING) {
+    elState.textContent = 'RUNNING';
+    elState.className   = 'info-val cyan';
+  } else if (systemState === STATE.COMPLETE) {
+    elState.textContent = 'CONCLUÍDO';
+    elState.className   = 'info-val green';
+  } else {
+    elState.textContent = 'IDLE';
+    elState.className   = 'info-val dim';
+  }
+}
+
+// ════
+//  MISSÃO — helpers
+// ════
+function formatT(s) {
+  if (s === null || s === undefined || isNaN(s)) return '--';
+  const m   = Math.floor(s / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return m > 0 ? `${m}:${sec}` : String(s).padStart(2, '0');
+}
+
+function nowTs() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+// ════
+//  HANDLER DE DADOS
+// ════
+function handleData(d) {
+  if (d.state) systemState = d.state;
+
+  const wasRunning = !dataPaused;
+  dataPaused = (systemState !== STATE.RUNNING);
+  if (wasRunning && dataPaused) { updateStateDisplay(); return; }
+  if (dataPaused) return;
+
+  const force   = parseFloat(d.f       ?? 0);
+  const elapsed = parseFloat(d.elapsed ?? 0);
+  const peak    = parseFloat(d.peak    ?? 0);
+  const impulse = parseFloat(d.impulse ?? 0);
+
+  elForce.textContent = force.toFixed(1);
+  elForce.style.color = force < -1 ? '#5aa9ff' : '';
+  updateArc(force);
+
+  graphData.push(force);
+  if (graphData.length > 300) graphData.shift();
+
+  elPeak.textContent = peak < 0.5 ? '0' : peak.toFixed(0);
+  elImp.textContent  = impulse.toFixed(3);
+
+  if (frozenTime !== null && !d.burning) {
+    elTime.textContent = frozenTime;
+  } else {
+    const ts = elapsed.toFixed(2);
+    elTime.textContent = ts;
+    if (d.burning) frozenTime = ts;
+  }
+
+  const wasBurning = burning;
+  burning = (systemState === STATE.RUNNING) && !!d.burning;
+  if (burning !== wasBurning) {
+    elForce.classList.toggle('burning', burning);
+    if (burning) triggerBurnFlash();
+    updateStateDisplay();
+  }
+
+  hzCount++;
+  const now = Date.now();
+  if (now - lastHzTs >= 1000) {
+    elHz.textContent = hzCount + ' Hz';
+    hzCount = 0; lastHzTs = now;
+  }
+
+  if (animFrame) cancelAnimationFrame(animFrame);
+  animFrame = requestAnimationFrame(drawGraph);
+}
+
+function triggerBurnFlash() {
+  burnFlash.classList.remove('active');
+  void burnFlash.offsetWidth;
+  burnFlash.classList.add('active');
+}
+
+// ════
+//  HANDLER PRINCIPAL
+// ════
+function handleMsg(msg) {
+  const t = msg.type;
+
+  // ── Sessão ────
+  if (t === 'state_update') {
+    if (msg.state) {
+      const prev  = systemState;
+      systemState = msg.state;
+
+      if (prev !== STATE.RUNNING && systemState === STATE.RUNNING) {
+        graphData = []; frozenTime = null;
+        burning   = false; dataPaused = false;
+        elForce.classList.remove('burning');
+        endOverlay.classList.remove('show');
+      }
+      if (prev !== STATE.COMPLETE && systemState === STATE.COMPLETE) {
+        dataPaused = true;
+        onSessionEnd(msg);
+      }
+      if (systemState === STATE.IDLE && (msg.event === 'reset' || prev !== STATE.IDLE)) {
+        graphData = []; frozenTime = null; burning = false;
+        dataPaused = true;
+        elForce.classList.remove('burning');
+        endOverlay.classList.remove('show');
+        elForce.textContent = '0.0'; elPeak.textContent = '0';
+        elImp.textContent   = '0.000'; elTime.textContent = '00.00';
+        updateArc(0); drawGraph();
+      }
+    }
+    if (msg.esp !== undefined) {
+      elEsp.textContent = msg.esp ? 'OK' : 'ERR';
+      elEsp.className   = `info-val ${msg.esp ? 'green' : 'err'}`;
+    }
+    // Recupera estado de missão se presente
+    if (msg.mission_state) applyMissionMsg(msg);
+    updateStateDisplay();
+    return;
+  }
+
+  if (t === 'data')      { handleData(msg); return; }
+  if (t === 'burn_start'){ burning = true;  elForce.classList.add('burning'); updateStateDisplay(); triggerBurnFlash(); return; }
+  if (t === 'burn_end')  { burning = false; elForce.classList.remove('burning'); updateStateDisplay(); return; }
+
+  // ── Missão ────
+  if (t === 'mission_start' || t === 'mission_tick' || t === 'mission_hold' ||
+      t === 'mission_resume' || t === 'mission_scrub' || t === 'mission_reset' ||
+      t === 'mission_t0'    || t === 'mission_config' || t === 'gonogo_update') {
+    applyMissionMsg(msg);
+    return;
+  }
+
+  // ── Visibilidade ────
+  if (t === 'overlay_ctrl')       { applyOverlayCtrl(msg.target, !!msg.show); return; }
+  if (t === 'overlay_visibility') { setGlobalVisibility(!!msg.show); return; }
+}
+
+function applyMissionMsg(msg) {
+  const t = msg.type || '';
+  const s = msg.mission_seconds ?? null;
+
+  if (t === 'mission_start') {
+    missionState = MISSION.COUNTING;
+    missionOverlay.classList.add('show');
+    missionOverlay.classList.remove('is-hold', 'is-scrub');
+    if (missionTimerEl)  { missionTimerEl.textContent = formatT(s); missionTimerEl.classList.remove('urgent'); }
+    if (missionStatusEl)   missionStatusEl.textContent = 'contagem ativa';
+  }
+
+  else if (t === 'mission_tick') {
+    // Tick chega a cada segundo mesmo em HOLD/SCRUB — ignora se não estiver contando
+    if (missionState !== MISSION.COUNTING) return;
+    if (s !== null && missionTimerEl) {
+      missionTimerEl.textContent = formatT(s);
+      missionTimerEl.classList.toggle('urgent', s <= 10);
+    }
+  }
+
+  else if (t === 'mission_hold') {
+    holdSeconds = s;
+    missionState = MISSION.HOLD;
+    missionOverlay.classList.add('show', 'is-hold');
+    missionOverlay.classList.remove('is-scrub');
+    if (missionTimerEl)  missionTimerEl.textContent  = 'HOLD';
+    if (missionStatusEl) missionStatusEl.textContent = msg.hold_reason || 'contagem pausada';
+  }
+
+  else if (t === 'mission_resume') {
+    missionState = MISSION.COUNTING;
+    missionOverlay.classList.remove('is-hold', 'is-scrub');
+    // Restaura o número que estava quando o hold foi ativado
+    if (missionTimerEl)  { missionTimerEl.textContent = formatT(holdSeconds); missionTimerEl.classList.remove('urgent'); }
+    if (missionStatusEl)   missionStatusEl.textContent = 'contagem ativa';
+    updateStateDisplay();
+  }
+
+  else if (t === 'mission_scrub') {
+    missionState = MISSION.SCRUBBED;
+    missionOverlay.classList.add('show', 'is-scrub');
+    missionOverlay.classList.remove('is-hold');
+    if (missionTimerEl)  missionTimerEl.textContent  = 'SCRUB';
+    if (missionStatusEl) missionStatusEl.textContent = msg.scrub_reason || 'teste cancelado';
+    // NÃO remove .show aqui — o card deve ficar visível
+  }
+
+  else if (t === 'mission_t0') {
+    missionState = MISSION.IDLE;
+    missionOverlay.classList.remove('show');
+    if (missionStatusEl) missionStatusEl.textContent = 'T-0';
+  }
+
+  else if (t === 'mission_reset') {
+    missionState = MISSION.IDLE;
+    missionOverlay.classList.remove('show', 'is-hold', 'is-scrub');
+    if (missionTimerEl)  { missionTimerEl.textContent = '--'; missionTimerEl.classList.remove('urgent'); }
+    if (missionStatusEl)   missionStatusEl.textContent = 'aguardando';
+    updateStateDisplay();
+  }
+
+  updateStateDisplay();
+}
+
+// ════
+//  VISIBILIDADE
+// ════
+const ovlTargets = {
+  left:   document.getElementById('ovl-left'),
+  center: document.getElementById('ovl-center'),
+  right:  document.getElementById('ovl-right'),
+  info:   document.getElementById('ovl-info'),
+  graph:  document.getElementById('ovl-graph'),
+};
+
+function applyOverlayCtrl(target, show) {
+  const el = ovlTargets[target];
+  if (el) el.classList.toggle('hud-off', !show);
+}
+
+function setGlobalVisibility(show) {
+  document.body.classList.toggle('ui-hidden', !show);
+}
+
+// ════
+//  FIM DE SESSÃO
+// ════
+function onSessionEnd(msg) {
+  const peak    = parseFloat(msg.peak     ?? elPeak.textContent ?? 0);
+  const impulse = parseFloat(msg.impulse  ?? elImp.textContent  ?? 0);
+  const dur     = parseFloat(msg.duration ?? 0);
+  document.getElementById('e-peak').textContent = peak.toFixed(1);
+  document.getElementById('e-imp').textContent  = impulse.toFixed(3);
+  document.getElementById('e-dur').textContent  = dur.toFixed(2);
+  endOverlay.classList.add('show');
+  setTimeout(() => endOverlay.classList.remove('show'), 15000);
+}
+
+// ════
+//  WEBSOCKET
+// ════
+let ws = null;
+let reconnectTimer = null;
+
+function connect() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    liveDot.className   = 'pill-dot live';
+    liveTxt.textContent = `${WS_IP}:${WS_PORT}`;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
+  ws.onmessage = e => {
+    try { handleMsg(JSON.parse(e.data)); } catch {}
+  };
+  ws.onclose = () => {
+    liveDot.className   = 'pill-dot err';
+    liveTxt.textContent = 'sem conexão';
+    elEsp.textContent   = 'ERR';
+    elEsp.className     = 'info-val err';
+    if (!reconnectTimer) reconnectTimer = setTimeout(connect, 2500);
+  };
+  ws.onerror = () => {
+    liveDot.className   = 'pill-dot err';
+    liveTxt.textContent = 'erro WS';
+  };
+}
+
+// ════
+//  INIT
+// ════
+connect();
+setTimeout(() => document.body.classList.add('anim-ready'), 1500);
+</script>
+</body>
+</html>

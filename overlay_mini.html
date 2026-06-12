@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Telemetria — Teste</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@500;600&display=swap');
+
+:root {
+  --bg:      transparent;
+  --panel:   rgba(8, 12, 20, .80);
+  --panel2:  rgba(14, 20, 32, .90);
+  --line:    rgba(140, 170, 210, .16);
+  --ink:     #e8eef7;
+  --ink-dim: rgba(232, 238, 247, .45);
+  --cyan:    #22d3ee;
+  --amber:   #f5a623;
+  --green:   #34d399;
+  --red:     #ef4757;
+  --radius:  10px;
+  --shadow:  0 8px 32px rgba(0,0,0,.55);
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Container principal — canto inferior esquerdo ── */
+.hud {
+  position: fixed;
+  bottom: 28px;
+  left: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  width: 340px;
+  transition: opacity .5s, transform .5s;
+}
+body.ui-hidden .hud { opacity: 0; transform: translateY(16px); }
+
+/* ── Card base ── */
+.card {
+  background: var(--panel);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+.card::before, .card::after {
+  content: ''; position: absolute;
+  width: 8px; height: 8px;
+  border: 1px solid var(--cyan); opacity: .5;
+}
+.card::before { top: 5px; left: 5px; border-right: none; border-bottom: none; }
+.card::after  { bottom: 5px; right: 5px; border-left: none; border-top: none; }
+
+/* ── Força principal ── */
+.force-card {
+  padding: 18px 22px 16px;
+  border-left: 3px solid var(--cyan);
+}
+.force-card.burning { border-left-color: var(--red); }
+
+.force-label {
+  font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--ink-dim); font-weight: 600; margin-bottom: 6px;
+}
+.force-row {
+  display: flex; align-items: baseline; gap: 8px;
+}
+.force-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 72px; font-weight: 700; line-height: 1;
+  letter-spacing: -3px; font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  transition: color .2s, text-shadow .2s;
+}
+.force-val.burning {
+  color: #fff;
+  text-shadow: 0 0 20px rgba(239,71,87,.9), 0 0 50px rgba(239,71,87,.4);
+  animation: pulse .4s ease infinite alternate;
+}
+@keyframes pulse {
+  from { text-shadow: 0 0 20px rgba(239,71,87,.7); }
+  to   { text-shadow: 0 0 40px rgba(239,71,87,1), 0 0 80px rgba(239,71,87,.4); }
+}
+.force-unit {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px; color: var(--ink-dim); font-weight: 400;
+}
+
+/* ── Barra de progresso da força ── */
+.force-bar-wrap {
+  margin-top: 10px;
+  height: 4px; background: rgba(255,255,255,.06);
+  border-radius: 2px; overflow: hidden;
+}
+.force-bar {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--amber), var(--red));
+  width: 0%; transition: width .08s linear;
+}
+
+/* ── Métricas secundárias ── */
+.metrics-card {
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+}
+.metric {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 6px;
+  border-right: 1px solid var(--line);
+}
+.metric:last-child { border-right: none; }
+.metric-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px; font-weight: 700; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  transition: color .2s;
+}
+.metric-lbl {
+  font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--ink-dim); margin-top: 4px; font-weight: 600;
+}
+.metric-val.cyan  { color: var(--cyan); }
+.metric-val.amber { color: var(--amber); }
+.metric-val.green { color: var(--green); }
+.metric-val.red   { color: var(--red); }
+
+/* ── Status pill ── */
+.pill {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--panel2);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  align-self: flex-start;
+}
+.pill-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #555; flex-shrink: 0;
+  transition: background .3s, box-shadow .3s;
+}
+.pill-dot.live { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: blink 1.2s infinite; }
+.pill-dot.ok   { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.pill-dot.warn { background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: blink .7s infinite; }
+.pill-dot.err  { background: var(--red);   box-shadow: 0 0 8px var(--red);   animation: blink .4s infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+.pill-txt {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* ── Flash queima ── */
+.burn-flash {
+  position: fixed; inset: 0;
+  background: radial-gradient(circle at 20% 90%, rgba(239,71,87,.3), transparent 60%);
+  pointer-events: none; opacity: 0; z-index: 100;
+}
+.burn-flash.active { animation: flashIn .5s ease-out forwards; }
+@keyframes flashIn { 0%{opacity:.7} 100%{opacity:0} }
+
+/* ── Resultado final ── */
+.result-card {
+  padding: 20px 22px;
+  border-left: 3px solid var(--green);
+  display: none;
+}
+.result-card.show { display: block; animation: slideIn .4s cubic-bezier(.16,1,.3,1); }
+@keyframes slideIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.result-title {
+  font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--green); margin-bottom: 14px; font-weight: 700;
+}
+.result-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+}
+.result-item { display: flex; flex-direction: column; gap: 4px; }
+.result-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 22px; font-weight: 700; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.result-lbl {
+  font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--ink-dim); font-weight: 600;
+}
+</style>
+</head>
+<body>
+
+<div class="burn-flash" id="burnFlash"></div>
+
+<div class="hud" id="hud">
+
+  <!-- Força principal -->
+  <div class="card force-card" id="forceCard">
+    <div class="force-label">Força de Empuxo</div>
+    <div class="force-row">
+      <div class="force-val" id="valForce">0.0</div>
+      <div class="force-unit">N</div>
+    </div>
+    <div class="force-bar-wrap">
+      <div class="force-bar" id="forceBar"></div>
+    </div>
+  </div>
+
+  <!-- Métricas: pico · tempo · impulso -->
+  <div class="card metrics-card">
+    <div class="metric">
+      <div class="metric-val amber" id="valPeak">0</div>
+      <div class="metric-lbl">Pico (N)</div>
+    </div>
+    <div class="metric">
+      <div class="metric-val cyan" id="valTime">--</div>
+      <div class="metric-lbl">Queima (s)</div>
+    </div>
+    <div class="metric">
+      <div class="metric-val green" id="valImp">0.000</div>
+      <div class="metric-lbl">Impulso (N·s)</div>
+    </div>
+  </div>
+
+  <!-- Resultado ao fim da sessão -->
+  <div class="card result-card" id="resultCard">
+    <div class="result-title">◆ Resultado do Teste</div>
+    <div class="result-grid">
+      <div class="result-item">
+        <div class="result-val" id="rPeak">—</div>
+        <div class="result-lbl">Pico (N)</div>
+      </div>
+      <div class="result-item">
+        <div class="result-val" id="rImp">—</div>
+        <div class="result-lbl">Impulso (N·s)</div>
+      </div>
+      <div class="result-item">
+        <div class="result-val" id="rDur">—</div>
+        <div class="result-lbl">Duração (s)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status de conexão -->
+  <div class="pill">
+    <div class="pill-dot" id="pillDot"></div>
+    <div class="pill-txt" id="pillTxt">conectando...</div>
+  </div>
+
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────
+const params  = new URLSearchParams(location.search);
+const WS_IP   = params.get('ip')   || location.hostname || 'localhost';
+const WS_PORT = params.get('port') || '8766';
+const WS_URL  = `ws://${WS_IP}:${WS_PORT}`;
+const MAX_F   = parseFloat(params.get('max') || '120');
+
+// ── Estado ──────────────────────────────────────────
+const S = { IDLE:'idle', RUNNING:'running', COMPLETE:'complete' };
+let sysState  = S.IDLE;
+let burning   = false;
+let frozenTime = null;
+
+// ── Elementos ───────────────────────────────────────
+const elForce    = document.getElementById('valForce');
+const elPeak     = document.getElementById('valPeak');
+const elTime     = document.getElementById('valTime');
+const elImp      = document.getElementById('valImp');
+const forceBar   = document.getElementById('forceBar');
+const forceCard  = document.getElementById('forceCard');
+const burnFlash  = document.getElementById('burnFlash');
+const resultCard = document.getElementById('resultCard');
+const pillDot    = document.getElementById('pillDot');
+const pillTxt    = document.getElementById('pillTxt');
+
+// ── Dados ────────────────────────────────────────────
+function handleData(d) {
+  if (sysState !== S.RUNNING) return;
+
+  const force   = parseFloat(d.f       ?? 0);
+  const elapsed = parseFloat(d.elapsed ?? 0);
+  const peak    = parseFloat(d.peak    ?? 0);
+  const impulse = parseFloat(d.impulse ?? 0);
+
+  elForce.textContent = force.toFixed(1);
+  elPeak.textContent  = peak < 0.5 ? '0' : peak.toFixed(1);
+  elImp.textContent   = impulse.toFixed(3);
+
+  // Barra
+  const pct = Math.min(Math.abs(force) / MAX_F * 100, 100);
+  forceBar.style.width = pct + '%';
+
+  // Tempo de queima
+  if (frozenTime !== null && !d.burning) {
+    elTime.textContent = frozenTime;
+  } else {
+    const ts = elapsed.toFixed(2);
+    elTime.textContent = ts;
+    if (d.burning) frozenTime = ts;
+  }
+
+  // Estado burning
+  const wasBurning = burning;
+  burning = !!d.burning;
+  if (burning !== wasBurning) {
+    elForce.classList.toggle('burning', burning);
+    forceCard.classList.toggle('burning', burning);
+    if (burning) {
+      burnFlash.classList.remove('active');
+      void burnFlash.offsetWidth;
+      burnFlash.classList.add('active');
+    }
+  }
+}
+
+// ── Fim de sessão ────────────────────────────────────
+function onSessionEnd(msg) {
+  const peak    = parseFloat(msg.peak     ?? 0);
+  const impulse = parseFloat(msg.impulse  ?? 0);
+  const dur     = parseFloat(msg.duration ?? 0);
+  document.getElementById('rPeak').textContent = peak.toFixed(1);
+  document.getElementById('rImp').textContent  = impulse.toFixed(3);
+  document.getElementById('rDur').textContent  = dur.toFixed(2);
+  resultCard.classList.add('show');
+  // Some after 30s
+  setTimeout(() => resultCard.classList.remove('show'), 30000);
+}
+
+// ── Reset visual ─────────────────────────────────────
+function resetVisuals() {
+  elForce.textContent = '0.0';
+  elPeak.textContent  = '0';
+  elTime.textContent  = '--';
+  elImp.textContent   = '0.000';
+  forceBar.style.width = '0%';
+  frozenTime = null; burning = false;
+  elForce.classList.remove('burning');
+  forceCard.classList.remove('burning');
+  resultCard.classList.remove('show');
+}
+
+// ── Handler principal ────────────────────────────────
+function handleMsg(msg) {
+  const t = msg.type;
+
+  if (t === 'state_update') {
+    const prev = sysState;
+    if (msg.state) sysState = msg.state;
+
+    if (prev !== S.RUNNING && sysState === S.RUNNING) {
+      resetVisuals();
+    }
+    if (prev !== S.COMPLETE && sysState === S.COMPLETE) {
+      onSessionEnd(msg);
+    }
+    if (sysState === S.IDLE && msg.event === 'reset') {
+      resetVisuals();
+    }
+    return;
+  }
+
+  if (t === 'data')      { handleData(msg); return; }
+  if (t === 'burn_start'){ burning = true;  elForce.classList.add('burning'); forceCard.classList.add('burning'); return; }
+  if (t === 'burn_end')  { burning = false; elForce.classList.remove('burning'); forceCard.classList.remove('burning'); return; }
+
+  if (t === 'overlay_visibility') {
+    document.body.classList.toggle('ui-hidden', !msg.show);
+  }
+}
+
+// ── WebSocket ────────────────────────────────────────
+let ws = null;
+let reconnTimer = null;
+
+function connect() {
+  if (ws && ws.readyState <= 1) return;
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    pillDot.className   = 'pill-dot live';
+    pillTxt.textContent = `${WS_IP}:${WS_PORT}`;
+    if (reconnTimer) { clearTimeout(reconnTimer); reconnTimer = null; }
+  };
+  ws.onmessage = e => {
+    try { handleMsg(JSON.parse(e.data)); } catch {}
+  };
+  ws.onclose = () => {
+    pillDot.className   = 'pill-dot err';
+    pillTxt.textContent = 'sem conexão';
+    if (!reconnTimer) reconnTimer = setTimeout(connect, 2500);
+  };
+  ws.onerror = () => {
+    pillDot.className   = 'pill-dot err';
+    pillTxt.textContent = 'erro WS';
+  };
+}
+
+connect();
+</script>
+</body>
+</html>
